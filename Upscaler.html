@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Upscaler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html {
+            min-height: 100%; /* Ensure html takes at least full viewport height */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(to right bottom, #e0f2fe, #bfdbfe); /* Soft blue gradient background */
+            min-height: 100vh; /* Ensure full viewport height */
+            display: flex;
+            align-items: center; /* Reverted to center, combined with padding and overflow, this works */
+            justify-content: center;
+            padding: 2rem 0; /* Add vertical padding */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+            overflow-y: auto; /* Explicitly enable vertical scrolling when content overflows */
+        }
+        /* Custom styles for better visual appeal */
+        .container {
+            max-width: 95%; /* Slightly wider container, fluid */
+            width: 100%;
+            margin: 2rem auto; /* Ensures top margin even on small screens */
+            padding: 2.5rem; /* Increased padding */
+            background-color: #ffffff;
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15); /* Stronger, softer shadow */
+            border: 1px solid rgba(255, 255, 255, 0.8); /* Subtle white border for depth */
+            backdrop-filter: blur(5px); /* Frosted glass effect */
+        }
+        h1 {
+            font-size: 3.5rem; /* Larger heading */
+            font-weight: 800; /* Extra bold */
+            color: #1a202c; /* Darker text for contrast */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05); /* Subtle text shadow */
+            /* Responsive font size */
+            @media (max-width: 768px) {
+                font-size: 2.5rem; /* Smaller on medium screens */
+            }
+            @media (max-width: 480px) {
+                font-size: 1.8rem; /* Even smaller on small screens */
+            }
+        }
+        .image-display-area {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem; /* Increased gap */
+            justify-content: center;
+            align-items: flex-start;
+            margin-top: 2.5rem; /* Increased margin */
+            min-height: 200px;
+        }
+        .image-card {
+            flex: 1 1 calc(50% - 2rem); /* Two columns, responsive. On smaller screens, they will stack. */
+            min-width: 300px; /* Minimum width for each card to prevent content crushing */
+            background-color: #f8fafc; /* Lighter background for cards */
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem; /* More rounded corners */
+            padding: 1.5rem; /* Increased padding */
+            text-align: center;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08); /* Enhanced shadow */
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        @media (max-width: 768px) {
+            .image-card {
+                flex: 1 1 100%; /* Stack on smaller screens */
+                min-width: unset; /* Remove min-width when stacked */
+            }
+        }
+        .image-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+        }
+        .image-card h3 {
+            font-size: 1.75rem; /* Larger subheadings */
+            font-weight: 700; /* Bold */
+            color: #2d3748; /* Darker gray */
+            margin-bottom: 1rem;
+            /* Responsive font size */
+            @media (max-width: 768px) {
+                font-size: 1.5rem;
+            }
+            @media (max-width: 480px) {
+                font-size: 1.25rem;
+            }
+        }
+        .image-card img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.75rem; /* More rounded image corners */
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #cbd5e0; /* Subtle image border */
+        }
+        .loading-indicator {
+            display: none;
+            margin-top: 2rem; /* Increased margin */
+            font-size: 1.25rem; /* Larger text */
+            color: #4a5568;
+            text-align: center;
+            background-color: #e0f7fa; /* Light cyan background */
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            /* Responsive adjustments */
+            @media (max-width: 480px) {
+                font-size: 1rem;
+                padding: 1rem;
+            }
+        }
+        .loading-indicator.active {
+            display: block;
+        }
+        .spinner {
+            border: 5px solid rgba(0, 0, 0, 0.1); /* Thicker spinner */
+            border-left-color: #3b82f6;
+            border-radius: 50%;
+            width: 40px; /* Larger spinner */
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px; /* Center spinner with more bottom margin */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress-bar-container {
+            width: 90%; /* Wider progress bar */
+            background-color: #e2e8f0;
+            border-radius: 0.75rem; /* More rounded */
+            overflow: hidden;
+            margin: 1.5rem auto 0.5rem; /* Adjusted margin */
+            height: 25px; /* Taller progress bar */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #3b82f6;
+            border-radius: 0.75rem;
+            transition: width 0.1s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .queue-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem; /* Increased gap */
+            justify-content: center;
+            margin-top: 1.5rem; /* Increased margin */
+            min-height: 50px; /* Ensure some height for queue display */
+            padding: 1rem;
+            background-color: #f0f8ff; /* Lightest blue background */
+            border-radius: 1rem;
+            box-shadow: inset 0 1px 5px rgba(0, 0, 0, 0.05);
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                padding: 0.75rem;
+            }
+        }
+        .queue-item {
+            padding: 0.4rem 1rem; /* Increased padding */
+            background-color: #e0f2fe;
+            border: 1px solid #90cdf4;
+            border-radius: 0.75rem; /* More rounded */
+            font-size: 0.95rem; /* Slightly larger font */
+            color: #2b6cb0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+            transition: background-color 0.2s, transform 0.2s;
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                font-size: 0.85rem;
+                padding: 0.3rem 0.8rem;
+            }
+        }
+        .queue-item.current {
+            background-color: #bfdbfe;
+            border-color: #60a5fa;
+            font-weight: bold;
+            transform: scale(1.02);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .queue-item .remove-btn {
+            background: none;
+            border: none;
+            color: #ef4444;
+            font-size: 1.1rem; /* Larger remove button */
+            cursor: pointer;
+            padding: 0;
+            margin-left: 0.75rem;
+            transition: transform 0.2s;
+        }
+        .queue-item .remove-btn:hover {
+            transform: rotate(15deg) scale(1.1);
+            color: #dc2626;
+        }
+        .finished-images-container {
+            margin-top: 3rem; /* More space */
+            padding-top: 2rem; /* More padding */
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            background-color: #fdfefe; /* Very light background */
+            border-radius: 1rem;
+            padding-bottom: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        .finished-images-grid { /* Changed to flex for list layout */
+            display: flex;
+            flex-direction: column; /* Stack items vertically */
+            align-items: stretch; /* Stretch items to fill width */
+            gap: 0.75rem; /* Smaller gap for list items */
+            margin-top: 1.5rem;
+            padding: 0 1rem;
+        }
+        .finished-image-item {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem; /* Slightly less rounded for list */
+            padding: 0.75rem 1rem; /* Adjusted padding for horizontal layout */
+            display: flex;
+            flex-direction: row; /* Arrange items horizontally */
+            align-items: center; /* Vertically align items */
+            justify-content: space-between; /* Distribute space between elements */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* Lighter shadow for list items */
+            width: 100%; /* Take full width of parent */
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            /* Responsive adjustment for small screens */
+            @media (max-width: 480px) {
+                flex-direction: column; /* Stack image and info vertically */
+                align-items: flex-start; /* Align text to left when stacked */
+                padding: 0.5rem;
+            }
+        }
+        .finished-image-item:hover {
+            transform: translateX(5px); /* Slight horizontal shift on hover */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        .finished-image-item img {
+            width: 60px; /* Smaller fixed width for thumbnail */
+            height: 60px; /* Fixed height to make it square */
+            object-fit: cover; /* Ensure image covers the area without distortion */
+            border-radius: 0.5rem; /* Smaller rounded corners for thumbnail */
+            margin-right: 1rem; /* Margin to the right of the image */
+            border: 1px solid #cbd5e0;
+            flex-shrink: 0; /* Prevent image from shrinking */
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                margin-right: 0;
+                margin-bottom: 0.5rem; /* Add margin below image when stacked */
+            }
+        }
+        .finished-image-info { /* New div to group name and status */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            flex-grow: 1; /* Allow info to take available space */
+            margin-right: 1rem;
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                margin-right: 0;
+                width: 100%; /* Take full width when stacked */
+            }
+        }
+        .finished-image-item .file-name {
+            font-size: 0.9rem;
+            color: #4a5568;
+            word-break: break-all;
+            margin-bottom: 0.25rem; /* Smaller margin */
+            font-weight: 600;
+            text-align: left;
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                font-size: 0.85rem;
+            }
+        }
+        .finished-image-item .status-text {
+            font-size: 0.8rem; /* Smaller status text */
+            color: #10b981;
+            font-weight: bold;
+            margin-bottom: 0; /* No bottom margin */
+            text-align: left;
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                font-size: 0.75rem;
+            }
+        }
+        .finished-image-item .action-buttons { /* Container for download and repeat upscale buttons */
+            display: flex;
+            gap: 0.5rem; /* Space between buttons */
+            flex-shrink: 0;
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                width: 100%; /* Take full width when stacked */
+                justify-content: flex-start; /* Align buttons to the left */
+                margin-top: 0.75rem; /* Add some space above buttons */
+            }
+        }
+        .finished-image-item .download-single-btn,
+        .finished-image-item .repeat-upscale-btn { /* Combined styling for both buttons */
+            padding: 0.4rem 0.8rem; /* Smaller padding for button */
+            background-color: #3b82f6;
+            color: white;
+            font-size: 0.8rem; /* Smaller font for button */
+            font-weight: bold;
+            border-radius: 0.5rem; /* Smaller rounded corners */
+            transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Lighter shadow */
+            flex-shrink: 0; /* Prevent button from shrinking */
+            /* Responsive adjustment */
+            @media (max-width: 480px) {
+                flex-grow: 1; /* Allow buttons to grow to fill space */
+                text-align: center;
+                padding: 0.5rem 0.8rem;
+            }
+        }
+        .finished-image-item .download-single-btn:hover,
+        .finished-image-item .repeat-upscale-btn:hover {
+            background-color: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+        }
+        /* Style for repeat upscale button to distinguish it */
+        .finished-image-item .repeat-upscale-btn {
+            background-color: #60a5fa; /* A slightly different blue */
+        }
+        .finished-image-item .repeat-upscale-btn:hover {
+            background-color: #3b82f6;
+        }
+
+        /* General button styling */
+        .btn-primary {
+            padding: 0.75rem 2rem;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+            /* Responsive font size */
+            @media (max-width: 480px) {
+                font-size: 0.95rem;
+                padding: 0.6rem 1.5rem;
+            }
+        }
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            border-radius: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
+        }
+        .file-input-wrapper:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .file-input-label {
+            display: inline-block;
+            padding: 0.75rem 2rem;
+            background-color: #3b82f6;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 2rem;
+            cursor: pointer;
+            /* Responsive font size */
+            @media (max-width: 480px) {
+                font-size: 0.95rem;
+                padding: 0.6rem 1.5rem;
+            }
+        }
+        .file-input-wrapper.disabled .file-input-label {
+            background-color: #93c5fd; /* Lighter blue when disabled */
+            cursor: not-allowed;
+        }
+        .user-status-card {
+            background-color: #e3f2fd; /* Light blue background */
+            border: 1px solid #bbdefb;
+            border-radius: 1rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #1565c0; /* Darker blue text */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            /* Responsive font size */
+            @media (max-width: 480px) {
+                font-size: 0.95rem;
+                padding: 0.8rem 1rem;
+            }
+        }
+        .admin-controls-card {
+            background-color: #fff3e0; /* Light orange background */
+            border: 1px solid #ffe0b2;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            /* Responsive padding */
+            @media (max-width: 480px) {
+                padding: 1rem;
+            }
+        }
+        .admin-controls-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ef6c00; /* Darker orange text */
+            margin-bottom: 1rem;
+            /* Responsive font size */
+            @media (max-width: 480px) {
+                font-size: 1.25rem;
+            }
+        }
+        .admin-controls-card .btn-secondary {
+            background-color: #ff9800; /* Orange button */
+            color: white;
+            padding: 0.6rem 1.2rem;
+            border-radius: 1.5rem;
+            font-weight: bold;
+            transition: background-color 0.2s, transform 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            /* Responsive font size and padding */
+            @media (max-width: 480px) {
+                font-size: 0.85rem;
+                padding: 0.5rem 1rem;
+            }
+        }
+        .admin-controls-card .btn-secondary:hover {
+            background-color: #fb8c00; /* Darker orange on hover */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px (0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-content-center py-10">
+    <div class="container">
+        <h1 class="text-4xl font-extrabold text-center text-gray-800 mb-8">Image Upscaler</h1>
+
+        <div id="userStatus" class="user-status-card">
+            Loading user status...
+        </div>
+
+        <div class="flex flex-col md:flex-row items-center justify-center gap-6 mb-8">
+            <div class="file-input-wrapper" id="imageInputWrapper">
+                <input type="file" id="imageInput" accept="image/*" multiple>
+                <label for="imageInput" class="file-input-label">Choose Files</label>
+            </div>
+            <button id="abortButton" class="btn-primary bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                Abort
+            </button>
+        </div>
+
+        <div id="finishedImagesContainer" class="finished-images-container" style="display: none;">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">Finished Images</h3>
+            <div id="finishedImagesGrid" class="finished-images-grid">
+                </div>
+            <div class="flex flex-col md:flex-row items-center justify-center gap-6 mt-8">
+                <button id="downloadAllButton" class="btn-primary bg-green-600 text-white" style="display: none;">
+                    Download All
+                </button>
+                <button id="clearFinishedButton" class="btn-primary bg-gray-500 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                    Clear Finished
+                </button>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="loading-indicator">
+            <div class="spinner"></div>
+            <p id="loadingMessage">Upscaling image, please wait...</p>
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <span id="progressText" class="text-sm text-gray-600 mt-2">0%</span>
+        </div>
+
+        <div class="queue-container">
+            </div>
+
+        <div class="image-display-area" id="imageDisplayArea">
+            <div class="image-card" id="originalImageCard" style="display: none;">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Original Image</h3>
+                <img id="originalImage" src="#" alt="Original Image">
+            </div>
+            <div class="image-card" id="upscaledImageCard" style="display: none;">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Upscaled Image</h3>
+                <img id="upscaledImage" src="#" alt="Upscaled Image">
+            </div>
+        </div>
+
+        <div id="adminControls" class="admin-controls-card">
+            <h3>Admin Controls (for Testing)</h3>
+            <div class="flex flex-wrap justify-center gap-4">
+                <button id="activatePremiumBtn" class="btn-secondary">Activate Premium</button>
+                <button id="deactivatePremiumBtn" class="btn-secondary">Deactivate Premium</button>
+                <button id="addCreditsBtn" class="btn-secondary">Add 10 Credits</button>
+                <button id="startTrialBtn" class="btn-secondary">Start New Trial</button>
+                <button id="resetDailyFreeBtn" class="btn-secondary">Reset Daily Free Upscales</button>
+                <button id="clearAllUserDataBtn" class="btn-secondary bg-red-500 hover:bg-red-600">Clear All User Data</button>
+            </div>
+        </div>
+
+        <div id="messageBox" class="hidden fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                <p id="messageText" class="text-lg text-gray-800 mb-4"></p>
+                <button id="closeMessageBox" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-full hover:bg-blue-700 transition duration-300">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/upscaler@1.0.0-beta.19/dist/browser/umd/upscaler.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@latest/dist/umd/index.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        // Get references to DOM elements
+        const imageInput = document.getElementById('imageInput');
+        const imageInputWrapper = document.getElementById('imageInputWrapper');
+        const abortButton = document.getElementById('abortButton');
+        const downloadAllButton = document.getElementById('downloadAllButton');
+        const clearFinishedButton = document.getElementById('clearFinishedButton');
+        const originalImage = document.getElementById('originalImage');
+        const upscaledImage = document.getElementById('upscaledImage');
+        const originalImageCard = document.getElementById('originalImageCard');
+        const upscaledImageCard = document.getElementById('upscaledImageCard');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const queueContainer = document.querySelector('.queue-container'); // Corrected selector
+        const finishedImagesContainer = document.getElementById('finishedImagesContainer');
+        const finishedImagesGrid = document.getElementById('finishedImagesGrid');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const closeMessageBox = document.getElementById('closeMessageBox');
+
+        // Admin controls
+        const userStatusDisplay = document.getElementById('userStatus');
+        const activatePremiumBtn = document.getElementById('activatePremiumBtn');
+        const deactivatePremiumBtn = document.getElementById('deactivatePremiumBtn');
+        const addCreditsBtn = document.getElementById('addCreditsBtn');
+        const startTrialBtn = document.getElementById('startTrialBtn');
+        const resetDailyFreeBtn = document.getElementById('resetDailyFreeBtn');
+        const clearAllUserDataBtn = document.getElementById('clearAllUserDataBtn');
+
+        let upscaler;
+        // imageQueue will store objects like { file: File|Blob, originalName: string, passes: number, sourceFinishedImageId?: string }
+        const imageQueue = [];
+        // upscaledImagesData will store { id: string, name: string, dataURL: string, originalFileName: string, passesPerformed: number, domElement: HTMLElement }
+        const upscaledImagesData = [];
+        const MAX_QUEUE_SIZE = 5;
+        let isUpscaling = false;
+        let currentAbortController = null;
+        let currentOriginalFile = null; // To keep track of the currently selected file for display
+
+        const TILE_SIZE = 64;
+        const TILE_PADDING = 4;
+
+        // Freemium Model Constants
+        const TRIAL_DAYS = 3;
+        const FREE_UPSCALES_PER_DAY = 2; // For non-premium, non-trial users
+
+        // User settings object (simulating user data from a backend like Firestore)
+        let userSettings = {
+            isPremium: false,
+            trialStartDate: null, // timestamp
+            credits: 0,
+            lastDailyReset: null, // timestamp
+            freeUpscalesUsedToday: 0
+        };
+
+        /**
+         * Generates a simple unique ID.
+         * @returns {string} A unique ID string.
+         */
+        function generateUniqueId() {
+            return Date.now().toString(36) + Math.random().toString(36).substring(2);
+        }
+
+        /**
+         * Generates a procedurally named file name.
+         * @param {string} originalBaseName - The base name of the original file (without extension).
+         * @param {number} passes - The number of upscaling passes performed.
+         * @returns {string} A unique file name.
+         */
+        function generateProceduralFileName(originalBaseName, passes) {
+            const timestamp = new Date().toISOString().replace(/[:.-]/g, ''); // Remove special chars for filename
+            const randomString = Math.random().toString(36).substring(2, 7); // 5 random chars
+            return `${originalBaseName}_upscaled_${passes}_${timestamp}_${randomString}.png`;
+        }
+
+        /**
+         * Generates a procedural name for the ZIP archive.
+         * @returns {string} A unique ZIP file name.
+         */
+        function generateProceduralZipFileName() {
+            const timestamp = new Date().toISOString().replace(/[:.-]/g, ''); // Remove special chars for filename
+            const randomString = Math.random().toString(36).substring(2, 7); // 5 random chars
+            return `upscaled_archive_${timestamp}_${randomString}.zip`;
+        }
+
+        /**
+         * Converts a Data URL to a Blob object.
+         * @param {string} dataURL - The Data URL string.
+         * @returns {Blob} The Blob object.
+         */
+        function dataURLtoBlob(dataURL) {
+            const parts = dataURL.split(';base64,');
+            const contentType = parts[0].split(':')[1];
+            const raw = window.atob(parts[1]);
+            const rawLength = raw.length;
+            const uInt8Array = new Uint8Array(rawLength);
+            for (let i = 0; i < rawLength; ++i) {
+                uInt8Array[i] = raw.charCodeAt(i);
+            }
+            return new Blob([uInt8Array], { type: contentType });
+        }
+
+        /**
+         * Displays a custom message box instead of alert().
+         * @param {string} message - The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        /**
+         * Updates the loading bar and text.
+         * @param {number} percentage - The completion percentage (0-100).
+         * @param {string} message - The message to display.
+         */
+        function updateProgressBar(percentage, message) {
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${Math.round(percentage)}%`;
+            loadingMessage.textContent = message;
+        }
+
+        /**
+         * Renders the current state of the image queue.
+         */
+        function renderQueue() {
+            queueContainer.innerHTML = '';
+            if (imageQueue.length === 0 && !isUpscaling) {
+                queueContainer.textContent = 'Queue is empty. Add images to start upscaling.';
+                queueContainer.classList.add('text-gray-500', 'text-center');
+                return;
+            } else {
+                queueContainer.classList.remove('text-gray-500', 'text-center');
+            }
+
+            imageQueue.forEach((item, index) => {
+                const queueItem = document.createElement('div');
+                queueItem.classList.add('queue-item', 'rounded-full', 'shadow-sm');
+                if (index === 0 && isUpscaling) {
+                    queueItem.classList.add('current');
+                }
+                queueItem.textContent = `${item.originalName} (x${item.passes})`;
+
+                const removeButton = document.createElement('button');
+                removeButton.classList.add('remove-btn');
+                removeButton.innerHTML = '&times;';
+                removeButton.title = `Remove ${item.originalName} from queue`;
+                removeButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeImageFromQueue(index);
+                });
+                queueItem.appendChild(removeButton);
+                queueContainer.appendChild(queueItem);
+            });
+        }
+
+        /**
+         * Removes an image from the queue at a specific index.
+         * @param {number} index - The index of the image to remove.
+         */
+        function removeImageFromQueue(index) {
+            if (index > -1 && index < imageQueue.length) {
+                imageQueue.splice(index, 1);
+                renderQueue();
+                checkButtonStates();
+            }
+        }
+
+        /**
+         * Checks the state of the image input and action buttons based on queue and upscaling status.
+         */
+        function checkButtonStates() {
+            const isQueueFull = imageQueue.length >= MAX_QUEUE_SIZE;
+            // The "Upscale" button was removed, so no need to check isImageLoadedInDisplay for it.
+
+            if (isUpscaling || isQueueFull) {
+                imageInput.disabled = true;
+                imageInputWrapper.classList.add('disabled');
+            } else {
+                imageInput.disabled = false;
+                imageInputWrapper.classList.remove('disabled');
+            }
+
+            if (isUpscaling) {
+                abortButton.disabled = false;
+                abortButton.style.opacity = '1';
+                abortButton.style.cursor = 'pointer';
+            } else {
+                abortButton.disabled = true;
+                abortButton.style.opacity = '0.5';
+                abortButton.style.cursor = 'not-allowed';
+            }
+
+            // Download All button state: enabled if there are upscaled images and not currently upscaling
+            if (upscaledImagesData.length > 0 && !isUpscaling) {
+                downloadAllButton.style.display = 'block';
+                downloadAllButton.disabled = false;
+            } else {
+                downloadAllButton.style.display = 'none';
+                downloadAllButton.disabled = true;
+            }
+
+            // Clear Finished button state: enabled if there are upscaled images
+            if (upscaledImagesData.length > 0) {
+                clearFinishedButton.disabled = false;
+                clearFinishedButton.style.opacity = '1';
+                clearFinishedButton.style.cursor = 'pointer';
+                finishedImagesContainer.style.display = 'block';
+            } else {
+                clearFinishedButton.disabled = true;
+                clearFinishedButton.style.opacity = '0.5';
+                clearFinishedButton.style.cursor = 'not-allowed';
+                finishedImagesContainer.style.display = 'none';
+            }
+        }
+
+        /**
+         * Waits for Upscaler and the default model to be defined globally.
+         * @returns {Promise<void>} A promise that resolves when Upscaler and DefaultUpscalerJSModel are defined.
+         */
+        function waitForUpscalerAndModel() {
+            return new Promise((resolve, reject) => {
+                const checkInterval = setInterval(() => {
+                    if (typeof window.Upscaler !== 'undefined' && typeof window.DefaultUpscalerJSModel !== 'undefined') {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    reject(new Error('UpscalerJS or DefaultUpscalerJSModel library did not load within expected time.'));
+                }, 30000);
+            });
+        }
+
+        /**
+         * Initializes UpscalerJS.
+         */
+        async function initializeUpscaler() {
+            try {
+                console.log('Attempting to initialize UpscalerJS...');
+                await waitForUpscalerAndModel();
+                console.log('Upscaler and Model are defined. Initializing Upscaler instance...');
+                upscaler = new Upscaler({
+                    model: window.DefaultUpscalerJSModel,
+                    warmup: true,
+                });
+                console.log('UpscalerJS initialized successfully:', upscaler);
+                initializeUser(); // Initialize user settings
+                checkButtonStates();
+                renderQueue();
+            } catch (error) {
+                console.error('Failed to initialize UpscalerJS:', error);
+                showMessageBox('Error initializing upscaler: ' + error.message + '. Please check your internet connection and try again.');
+                imageInput.disabled = true;
+                imageInputWrapper.classList.add('disabled');
+                abortButton.disabled = true;
+                downloadAllButton.style.display = 'none';
+                clearFinishedButton.disabled = true;
+            }
+        }
+
+        /**
+         * Applies a watermark to the given canvas context.
+         * @param {CanvasRenderingContext2D} ctx - The 2D rendering context of the canvas.
+         * @param {number} canvasWidth - The width of the canvas.
+         * @param {number} canvasHeight - The height of the canvas.
+         */
+        function applyWatermark(ctx, canvasWidth, canvasHeight) {
+            const watermarkText = "Freemium Upscale";
+            const fontSize = Math.max(16, Math.min(canvasWidth, canvasHeight) * 0.03); // Responsive font size
+            ctx.font = `bold ${fontSize}px Arial`;
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.5)'; // Semi-transparent gray
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'bottom';
+            const margin = Math.max(10, Math.min(canvasWidth, canvasHeight) * 0.02);
+            ctx.fillText(watermarkText, canvasWidth - margin, canvasHeight - margin);
+        }
+
+        /**
+         * Performs a single upscaling pass on an image source.
+         * @param {HTMLImageElement|HTMLCanvasElement} imageSource - The source for upscaling.
+         * @param {string} fileName - The name of the file being processed.
+         * @param {number} currentPass - The current pass number (e.g., 1).
+         * @param {number} totalPasses - Total number of passes (e.g., 1).
+         * @param {boolean} applyWatermarkFlag - Whether to apply watermark.
+         * @returns {Promise<string>} A promise that resolves with the DataURL of the upscaled image.
+         */
+        async function performSingleUpscalePass(imageSource, fileName, currentPass, totalPasses, applyWatermarkFlag) {
+            console.log('performSingleUpscalePass called for:', fileName, 'Pass:', currentPass, '/', totalPasses);
+
+            const originalWidth = imageSource.naturalWidth || imageSource.width;
+            const originalHeight = imageSource.naturalHeight || imageSource.height;
+
+            const originalCanvas = document.createElement('canvas');
+            originalCanvas.width = originalWidth;
+            originalCanvas.height = originalHeight;
+            const originalCtx = originalCanvas.getContext('2d');
+            originalCtx.drawImage(imageSource, 0, 0, originalWidth, originalHeight);
+
+            const scaleFactor = 2;
+            const upscaledWidth = originalWidth * scaleFactor;
+            const upscaledHeight = originalHeight * scaleFactor;
+
+            const finalUpscaledCanvas = document.createElement('canvas');
+            finalUpscaledCanvas.width = upscaledWidth;
+            finalUpscaledCanvas.height = upscaledHeight;
+            const finalUpscaledCtx = finalUpscaledCanvas.getContext('2d');
+
+            // Calculate number of tiles based on content area
+            const effectiveTileSize = TILE_SIZE - 2 * TILE_PADDING;
+            const numTilesX = Math.ceil(originalWidth / effectiveTileSize);
+            const numTilesY = Math.ceil(originalHeight / effectiveTileSize);
+
+            let completedTiles = 0;
+            const totalTiles = numTilesX * numTilesY;
+
+            for (let y = 0; y < numTilesY; y++) {
+                for (let x = 0; x < numTilesX; x++) {
+                    if (currentAbortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
+
+                    // Calculate the actual content area of the original image for this tile
+                    const originalContentStartX = x * effectiveTileSize;
+                    const originalContentStartY = y * effectiveTileSize;
+
+                    const originalContentWidth = Math.min(effectiveTileSize, originalWidth - originalContentStartX);
+                    const originalContentHeight = Math.min(effectiveTileSize, originalHeight - originalContentStartY);
+
+                    if (originalContentWidth <= 0 || originalContentHeight <= 0) {
+                        continue; // Skip if no content
+                    }
+
+                    // Calculate the source region to extract from the original image (with padding)
+                    const paddedSrcX = Math.max(0, originalContentStartX - TILE_PADDING);
+                    const paddedSrcY = Math.max(0, originalContentStartY - TILE_PADDING);
+                    const paddedSrcWidth = Math.min(originalWidth - paddedSrcX, originalContentWidth + 2 * TILE_PADDING);
+                    const paddedSrcHeight = Math.min(originalHeight - paddedSrcY, originalContentHeight + 2 * TILE_PADDING);
+
+                    // Create a temporary canvas for the padded source tile
+                    const tileCanvas = document.createElement('canvas');
+                    tileCanvas.width = paddedSrcWidth;
+                    tileCanvas.height = paddedSrcHeight;
+                    const tileCtx = tileCanvas.getContext('2d');
+                    tileCtx.drawImage(originalCanvas, paddedSrcX, paddedSrcY, paddedSrcWidth, paddedSrcHeight, 0, 0, paddedSrcWidth, paddedSrcHeight);
+
+                    const tileImageData = tileCtx.getImageData(0, 0, paddedSrcWidth, paddedSrcHeight);
+
+                    const upscaledTileSrc = await upscaler.upscale(tileImageData, {
+                        signal: currentAbortController.signal
+                    });
+
+                    const upscaledTileImage = new Image();
+                    await new Promise((resolve, reject) => {
+                        upscaledTileImage.onload = resolve;
+                        upscaledTileImage.onerror = reject;
+                        upscaledTileImage.src = upscaledTileSrc;
+                    });
+
+                    // Calculate the source rectangle on the upscaled tile image (to extract the content part)
+                    const sx = (originalContentStartX - paddedSrcX) * scaleFactor;
+                    const sy = (originalContentStartY - paddedSrcY) * scaleFactor;
+                    const sWidth = originalContentWidth * scaleFactor;
+                    const sHeight = originalContentHeight * scaleFactor;
+
+                    // Calculate the destination rectangle on the final upscaled canvas
+                    const dx = originalContentStartX * scaleFactor;
+                    const dy = originalContentStartY * scaleFactor;
+                    const dWidth = originalContentWidth * scaleFactor;
+                    const dHeight = originalContentHeight * scaleFactor;
+
+                    finalUpscaledCtx.drawImage(
+                        upscaledTileImage,
+                        sx, sy, sWidth, sHeight, // Source rectangle on the upscaled tile
+                        dx, dy, dWidth, dHeight  // Destination rectangle on the final canvas
+                    );
+                    completedTiles++;
+                    const progress = (completedTiles / totalTiles) * 100;
+                    updateProgressBar(progress, `Upscaling Pass ${currentPass}/${totalPasses} for ${fileName}: ${completedTiles}/${totalTiles} tiles...`);
+                }
+            }
+
+            // Apply watermark if required
+            if (applyWatermarkFlag) {
+                applyWatermark(finalUpscaledCtx, finalUpscaledCanvas.width, finalUpscaledCanvas.height);
+            }
+            return finalUpscaledCanvas.toDataURL('image/png');
+        }
+
+        /**
+         * Processes a single image item from the queue, handling multiple upscale passes.
+         * @param {{ file: File|Blob, originalName: string, passes: number, sourceFinishedImageId?: string }} queueItem - The image item from the queue.
+         */
+        async function upscaleImageInQueue(queueItem) {
+            console.log('upscaleImageInQueue called for:', queueItem.originalName, 'passes:', queueItem.passes);
+
+            isUpscaling = true;
+            currentAbortController = new AbortController();
+            checkButtonStates();
+            renderQueue();
+
+            loadingIndicator.classList.add('active');
+            updateProgressBar(0, `Loading ${queueItem.originalName}...`);
+
+            // Clear the currently displayed original image and hide its card
+            currentOriginalFile = null;
+            originalImage.src = '#';
+            originalImageCard.style.display = 'none';
+            upscaledImage.src = '#';
+            upscaledImageCard.style.display = 'none';
+
+            // Determine if watermark should be applied
+            let applyWatermarkFlag = false;
+            let upscaleAllowed = false;
+
+            if (userSettings.isPremium) {
+                upscaleAllowed = true;
+                console.log('Premium user, allowing upscale without restrictions.');
+            } else if (userSettings.credits > 0) {
+                userSettings.credits--;
+                upscaleAllowed = true;
+                console.log(`Using 1 credit. Remaining credits: ${userSettings.credits}`);
+                saveUserSettings();
+            } else if (isTrialActive() || userSettings.freeUpscalesUsedToday < FREE_UPSCALES_PER_DAY) {
+                userSettings.freeUpscalesUsedToday++;
+                applyWatermarkFlag = true;
+                upscaleAllowed = true;
+                console.log(`Using free upscale. Free upscales used today: ${userSettings.freeUpscalesUsedToday}`);
+                saveUserSettings();
+            } else {
+                showMessageBox(`Upscale limit reached. You have used ${userSettings.freeUpscalesUsedToday} of ${FREE_UPSCALES_PER_DAY} free upscales today. Please activate premium or add credits.`);
+                // Exit early if upscale is not allowed
+                loadingIndicator.classList.remove('active');
+                isUpscaling = false;
+                currentAbortController = null;
+                imageQueue.shift(); // Remove the processed image from the queue
+                renderQueue(); // Update queue display
+                updateUserStatusDisplay(); // Update status display
+                checkButtonStates(); // Re-check button states after processing
+                processQueue(); // Process the next image in the queue
+                return;
+            }
+
+            updateUserStatusDisplay(); // Update status display immediately after consumption
+
+            let currentImageSource = null; // Will hold the image or canvas for the current pass
+
+            try {
+                // Load the initial image from the file/blob
+                const reader = new FileReader();
+                const imgLoadPromise = new Promise((resolve, reject) => {
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.onerror = reject;
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = reject;
+                });
+                reader.readAsDataURL(queueItem.file); // Read the File or Blob
+
+                const initialImg = await imgLoadPromise;
+
+                if (currentAbortController.signal.aborted) {
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+
+                currentImageSource = initialImg;
+
+                let finalUpscaledDataURL = '';
+
+                // Determine the total passes performed for this image before this current pass
+                let sourceEntryOriginalPasses = 0;
+                let originalBaseName = queueItem.originalName.replace(/\.[^/.]+$/, ""); // Get base name for procedural naming
+
+                if (queueItem.sourceFinishedImageId) {
+                    const sourceEntry = upscaledImagesData.find(item => item.id === queueItem.sourceFinishedImageId);
+                    if (sourceEntry) {
+                        sourceEntryOriginalPasses = sourceEntry.passesPerformed;
+                        // Extract original base name from the source entry if it was already procedurally named
+                        const match = sourceEntry.originalFileName.match(/^(.*?)(?:_upscaled_|$)/);
+                        originalBaseName = match ? match[1] : sourceEntry.originalFileName.replace(/\.[^/.]+$/, "");
+                    }
+                }
+
+                // Perform the upscaling passes (queueItem.passes will be 1 for repeat upscales)
+                for (let i = 1; i <= queueItem.passes; i++) {
+                    if (currentAbortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
+                    finalUpscaledDataURL = await performSingleUpscalePass(
+                        currentImageSource,
+                        queueItem.originalName,
+                        i, // current pass within this specific queue item (e.g., 1)
+                        queueItem.passes, // total passes for this specific queue item (e.g., 1)
+                        applyWatermarkFlag // Pass the watermark flag
+                    );
+
+                    // For the next iteration within this loop (if queueItem.passes > 1),
+                    // the output of the current pass becomes the input.
+                    // This is still relevant for initial multiple file uploads.
+                    const tempImage = new Image();
+                    await new Promise((resolve, reject) => {
+                        tempImage.onload = resolve;
+                        tempImage.onerror = reject;
+                        tempImage.src = finalUpscaledDataURL;
+                    });
+                    currentImageSource = tempImage; // Use the image for the next pass
+                }
+
+                // Display the final upscaled image
+                upscaledImage.src = finalUpscaledDataURL;
+                upscaledImageCard.style.display = 'block';
+
+                // Calculate the total passes for the *final* image being recorded
+                const totalUpscalePassesForThisImage = sourceEntryOriginalPasses + queueItem.passes;
+                // Generate procedural name for the *output* file
+                const upscaledFileName = generateProceduralFileName(originalBaseName, totalUpscalePassesForThisImage);
+
+                // If this upscale originated from a "Repeat Upscale" action, remove the old entry
+                if (queueItem.sourceFinishedImageId) {
+                    const targetIndex = upscaledImagesData.findIndex(
+                        (item) => item.id === queueItem.sourceFinishedImageId
+                    );
+                    if (targetIndex !== -1) {
+                        const oldEntry = upscaledImagesData.splice(targetIndex, 1)[0];
+                        if (oldEntry.domElement && oldEntry.domElement.parentNode) {
+                            oldEntry.domElement.parentNode.removeChild(oldEntry.domElement);
+                        }
+                    }
+                }
+                
+                // Add as a new entry (or re-add the updated one)
+                const newId = generateUniqueId();
+                const thumbnailDiv = document.createElement('div');
+                thumbnailDiv.classList.add('finished-image-item');
+                thumbnailDiv.setAttribute('data-id', newId); // Set data-id on the parent div
+                thumbnailDiv.innerHTML = `
+                    <img src="${finalUpscaledDataURL}" alt="${upscaledFileName}" title="${upscaledFileName}">
+                    <div class="finished-image-info">
+                        <span class="file-name">${upscaledFileName}</span>
+                        <span class="status-text">100% Complete</span>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="download-single-btn">Download</button>
+                        <button class="repeat-upscale-btn" data-id="${newId}">Repeat Upscale</button>
+                    </div>
+                `;
+                const singleDownloadButton = thumbnailDiv.querySelector('.download-single-btn');
+                singleDownloadButton.addEventListener('click', () => {
+                    saveAs(finalUpscaledDataURL, upscaledFileName);
+                });
+
+                const repeatUpscaleButton = thumbnailDiv.querySelector('.repeat-upscale-btn');
+                repeatUpscaleButton.addEventListener('click', (e) => {
+                    const clickedId = e.target.dataset.id;
+                    const sourceEntry = upscaledImagesData.find(item => item.id === clickedId);
+                    if (!sourceEntry) {
+                        showMessageBox('Error: Source image for repeat upscale not found.');
+                        return;
+                    }
+
+                    if (imageQueue.length >= MAX_QUEUE_SIZE) {
+                        showMessageBox(`Queue is full. Maximum ${MAX_QUEUE_SIZE} images allowed. Cannot repeat upscale "${sourceEntry.name}".`);
+                        return;
+                    }
+
+                    // For "Repeat Upscale", we always add it for ONE more pass
+                    // Use the original base name from the source entry for consistent procedural naming
+                    const newFile = new File([dataURLtoBlob(sourceEntry.dataURL)], sourceEntry.name, { type: 'image/png' });
+                    imageQueue.push({
+                        file: newFile,
+                        originalName: sourceEntry.originalFileName, // Pass the original base name
+                        passes: 1, // Always queue for 1 pass when repeating
+                        sourceFinishedImageId: sourceEntry.id // Link to the entry being replaced
+                    });
+                    renderQueue();
+                    processQueue();
+                });
+
+                finishedImagesGrid.appendChild(thumbnailDiv);
+
+                upscaledImagesData.push({
+                    id: newId,
+                    name: upscaledFileName,
+                    dataURL: finalUpscaledDataURL,
+                    originalFileName: originalBaseName, // Store the extracted original base name
+                    passesPerformed: totalUpscalePassesForThisImage, // Correctly set total passes for the new entry
+                    domElement: thumbnailDiv // Store reference to the DOM element
+                });
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Upscaling aborted by user.');
+                    showMessageBox('Upscaling aborted.');
+                } else {
+                    console.error('Error during upscaling:', error);
+                    showMessageBox('An error occurred during upscaling for "' + queueItem.originalName + '": ' + error.message + '.');
+                }
+            } finally {
+                loadingIndicator.classList.remove('active');
+                updateProgressBar(0, 'Upscaling image, please wait...');
+                isUpscaling = false;
+                currentAbortController = null;
+                imageQueue.shift(); // Remove the processed image from the queue
+                renderQueue(); // Update queue display
+                checkButtonStates(); // Re-check button states after processing
+                processQueue(); // Process the next image in the queue
+            }
+        }
+
+        /**
+         * Processes images from the queue.
+         */
+        async function processQueue() {
+            if (imageQueue.length > 0 && !isUpscaling) {
+                const nextItem = imageQueue[0]; // Get the first item in the queue
+                await upscaleImageInQueue(nextItem);
+            } else {
+                checkButtonStates();
+            }
+        }
+
+        /**
+         * Zips all successfully upscaled images and triggers a download.
+         */
+        async function zipAndDownloadUpscaledImages() {
+            if (upscaledImagesData.length === 0) {
+                return;
+            }
+
+            const zip = new JSZip();
+            upscaledImagesData.forEach(img => {
+                console.log(`Adding to zip: ${img.name}`);
+                const base64Data = img.dataURL.split(',')[1];
+                zip.file(img.name, base64Data, { base64: true });
+            });
+
+            try {
+                const zipFileName = generateProceduralZipFileName(); // Generate a unique name for the ZIP
+                const content = await zip.generateAsync({ type: "blob" });
+                saveAs(content, zipFileName);
+            } catch (error) {
+                console.error('Error zipping files:', error);
+                showMessageBox('Failed to create ZIP file: ' + error.message);
+            }
+        }
+
+        // --- Freemium Model Logic ---
+
+        /**
+         * Loads user settings from localStorage.
+         */
+        function loadUserSettings() {
+            const savedSettings = localStorage.getItem('imageUpscalerUserSettings');
+            if (savedSettings) {
+                userSettings = JSON.parse(savedSettings);
+                // Convert timestamps back to Date objects if needed, or just use them as numbers
+                if (userSettings.trialStartDate) {
+                    userSettings.trialStartDate = new Date(userSettings.trialStartDate);
+                }
+                if (userSettings.lastDailyReset) {
+                    userSettings.lastDailyReset = new Date(userSettings.lastDailyReset);
+                }
+            }
+        }
+
+        /**
+         * Saves user settings to localStorage.
+         */
+        function saveUserSettings() {
+            localStorage.setItem('imageUpscalerUserSettings', JSON.stringify(userSettings));
+            updateUserStatusDisplay();
+            checkButtonStates();
+        }
+
+        /**
+         * Initializes user status on app load.
+         */
+        function initializeUser() {
+            loadUserSettings();
+
+            // If it's a new user or data was cleared, start a trial
+            if (!userSettings.trialStartDate && !userSettings.isPremium) {
+                startNewTrial();
+            } else {
+                // Check for trial expiration
+                if (!userSettings.isPremium && isTrialExpired()) {
+                    userSettings.trialStartDate = null; // Mark trial as over
+                    showMessageBox('Your free trial has ended. Please consider activating premium or using your daily free upscales with watermark.');
+                }
+                // Check for daily free upscale reset
+                resetDailyFreeUpscalesIfNeeded();
+            }
+            updateUserStatusDisplay();
+            checkButtonStates();
+        }
+
+        /**
+         * Checks if the trial is currently active.
+         * @returns {boolean} True if trial is active, false otherwise.
+         */
+        function isTrialActive() {
+            if (userSettings.trialStartDate && !userSettings.isPremium) {
+                const now = new Date();
+                const trialEnd = new Date(userSettings.trialStartDate.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+                return now < trialEnd;
+            }
+            return false;
+        }
+
+        /**
+         * Checks if the trial has expired.
+         * @returns {boolean} True if trial has expired, false otherwise.
+         */
+        function isTrialExpired() {
+            return userSettings.trialStartDate && !isTrialActive();
+        }
+
+        /**
+         * Resets daily free upscales if a new day has started.
+         */
+        function resetDailyFreeUpscalesIfNeeded() {
+            const now = new Date();
+            const lastResetDate = userSettings.lastDailyReset ? new Date(userSettings.lastDailyReset) : null;
+
+            if (!lastResetDate || lastResetDate.toDateString() !== now.toDateString()) {
+                // It's a new day or no previous reset, reset free upscales
+                userSettings.freeUpscalesUsedToday = 0;
+                userSettings.lastDailyReset = now;
+                saveUserSettings();
+                console.log('Daily free upscales reset for today.');
+            }
+        }
+
+        /**
+         * Updates the user status display.
+         */
+        function updateUserStatusDisplay() {
+            let statusText = '';
+            if (userSettings.isPremium) {
+                statusText = '<span class="font-bold text-green-700">Premium User</span> (Unlimited Upscales)';
+            } else if (isTrialActive()) {
+                const now = new Date();
+                const trialEndDate = new Date(userSettings.trialStartDate.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+                const timeLeftMs = trialEndDate.getTime() - now.getTime();
+                const daysLeft = Math.ceil(timeLeftMs / (24 * 60 * 60 * 1000));
+                statusText = `<span class="font-bold text-blue-700">Trial Active</span> (${daysLeft} days left) - Full Access`;
+            } else {
+                statusText = `<span class="font-bold text-orange-700">Free User</span> - ${userSettings.freeUpscalesUsedToday}/${FREE_UPSCALES_PER_DAY} daily upscales used (Watermark applied)`;
+            }
+            statusText += `<br>Credits: <span class="font-bold text-purple-700">${userSettings.credits}</span>`;
+            userStatusDisplay.innerHTML = statusText;
+        }
+
+        // --- Event Listeners for Admin Controls ---
+
+        activatePremiumBtn.addEventListener('click', () => {
+            userSettings.isPremium = true;
+            userSettings.trialStartDate = null; // Clear trial if premium
+            saveUserSettings();
+            showMessageBox('Premium mode activated!');
+        });
+
+        deactivatePremiumBtn.addEventListener('click', () => {
+            userSettings.isPremium = false;
+            // Optionally, restart trial if never had one before, or set it to expired if it was used
+            if (!userSettings.trialStartDate) { // If they never had a trial before this, start one.
+                 startNewTrial();
+            } else if (isTrialActive()) { // If trial was active, keep it active
+                // do nothing
+            } else { // If trial was expired, keep it expired
+                userSettings.trialStartDate = null; // Ensure it's marked as expired
+            }
+            resetDailyFreeUpscalesIfNeeded(); // Ensure daily upscales are managed
+            saveUserSettings();
+            showMessageBox('Premium mode deactivated. You are now a free user.');
+        });
+
+        addCreditsBtn.addEventListener('click', () => {
+            userSettings.credits += 10;
+            saveUserSettings();
+            showMessageBox('10 credits added!');
+        });
+
+        startTrialBtn.addEventListener('click', () => {
+            startNewTrial();
+            showMessageBox(`Started a new ${TRIAL_DAYS}-day free trial!`);
+        });
+
+        function startNewTrial() {
+            userSettings.isPremium = false;
+            userSettings.trialStartDate = new Date();
+            userSettings.credits = 0; // Trials usually reset credits
+            userSettings.freeUpscalesUsedToday = 0; // Reset daily free
+            userSettings.lastDailyReset = new Date(); // Reset daily free
+            saveUserSettings();
+        }
+
+        resetDailyFreeBtn.addEventListener('click', () => {
+            userSettings.freeUpscalesUsedToday = 0;
+            userSettings.lastDailyReset = new Date(); // Ensure reset for current day
+            saveUserSettings();
+            showMessageBox('Daily free upscales reset!');
+        });
+
+        clearAllUserDataBtn.addEventListener('click', () => {
+            localStorage.removeItem('imageUpscalerUserSettings');
+            userSettings = {
+                isPremium: false,
+                trialStartDate: null,
+                credits: 0,
+                lastDailyReset: null,
+                freeUpscalesUsedToday: 0
+            };
+            initializeUser(); // Re-initialize as a new user
+            showMessageBox('All user data cleared. Starting a fresh trial.');
+        });
+        
+        // --- Existing Event Listeners ---
+
+        imageInput.addEventListener('change', (event) => {
+            const files = event.target.files;
+            if (files.length === 0) {
+                // If user cancels file selection, clear currentOriginalFile and display
+                currentOriginalFile = null;
+                originalImage.src = '#';
+                originalImageCard.style.display = 'none';
+                upscaledImage.src = '#';
+                upscaledImageCard.style.display = 'none';
+                checkButtonStates();
+                return;
+            }
+
+            // Load the first selected file into the display area for preview
+            currentOriginalFile = files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalImage.src = e.target.result;
+                originalImageCard.style.display = 'block';
+                upscaledImageCard.style.display = 'none'; // Ensure upscaled image is hidden initially
+                upscaledImage.src = '#';
+                checkButtonStates(); // Update button states after image loads
+            };
+            reader.readAsDataURL(currentOriginalFile);
+
+            // Add all selected files to the queue for single upscaling passes automatically
+            let filesAddedToQueue = 0;
+            for (let i = 0; i < files.length; i++) {
+                if (imageQueue.length < MAX_QUEUE_SIZE) {
+                    imageQueue.push({ file: files[i], originalName: files[i].name, passes: 1 });
+                    filesAddedToQueue++;
+                } else {
+                    showMessageBox(`Queue is full. Maximum ${MAX_QUEUE_SIZE} images allowed. Skipped adding "${files[i].name}".`);
+                    break;
+                }
+            }
+
+            if (filesAddedToQueue > 0) {
+                imageInput.value = ''; // Clear file input after adding to queue
+                renderQueue();
+                processQueue(); // Start processing if not already
+            } else {
+                imageInput.value = ''; // Always clear the input even if queue was full
+                checkButtonStates(); // Update button states
+            }
+        });
+
+        abortButton.addEventListener('click', () => {
+            if (currentAbortController) {
+                currentAbortController.abort();
+            }
+            imageQueue.length = 0;
+            // Clear upscaledImagesData and DOM elements
+            upscaledImagesData.forEach(item => {
+                if (item.domElement && item.domElement.parentNode) {
+                    item.domElement.parentNode.removeChild(item.domElement);
+                }
+            });
+            upscaledImagesData.length = 0;
+            finishedImagesGrid.innerHTML = ''; // Ensure grid is truly empty
+            isUpscaling = false;
+            currentOriginalFile = null; // Clear current original file
+            originalImage.src = '#'; // Clear displayed original image
+            originalImageCard.style.display = 'none';
+            upscaledImage.src = '#'; // Clear displayed upscaled image
+            upscaledImageCard.style.display = 'none';
+
+            renderQueue();
+            checkButtonStates();
+            loadingIndicator.classList.remove('active');
+            updateProgressBar(0, 'Upscaling image, please wait...');
+            showMessageBox('Upscaling process aborted and queue cleared.');
+            updateUserStatusDisplay(); // Refresh status display
+        });
+
+        clearFinishedButton.addEventListener('click', () => {
+            upscaledImagesData.length = 0; // Clear the array
+            finishedImagesGrid.innerHTML = ''; // Clear the displayed thumbnails
+            checkButtonStates(); // Update button states (Download All and Clear Finished)
+        });
+
+        downloadAllButton.addEventListener('click', zipAndDownloadUpscaledImages);
+
+        closeMessageBox.addEventListener('click', hideMessageBox);
+
+        // --- Firebase Integration (Commented out for now as per user request) ---
+        /*
+        // Firebase Configuration (replace with your actual config)
+        // const firebaseConfig = {
+        //     apiKey: "YOUR_API_KEY",
+        //     authDomain: "YOUR_AUTH_DOMAIN",
+        //     projectId: "YOUR_PROJECT_ID",
+        //     storageBucket: "YOUR_STORAGE_BUCKET",
+        //     messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+        //     appId: "YOUR_APP_ID"
+        // };
+
+        // import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // let app, db, auth;
+        // let userId;
+
+        // async function initFirebase() {
+        //     app = initializeApp(firebaseConfig);
+        //     db = getFirestore(app);
+        //     auth = getAuth(app);
+
+        //     onAuthStateChanged(auth, async (user) => {
+        //         if (user) {
+        //             userId = user.uid;
+        //             console.log("Firebase Auth User ID:", userId);
+        //             // Load user settings from Firestore
+        //             await loadUserSettingsFromFirestore();
+        //             initializeUser(); // Proceed with app initialization after user data is loaded
+        //         } else {
+        //             // Sign in anonymously if no user is found
+        //             try {
+        //                 // If __initial_auth_token is provided by Canvas, use it
+        //                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        //                     await signInWithCustomToken(auth, __initial_auth_token);
+        //                 } else {
+        //                     await signInAnonymously(auth);
+        //                 }
+        //             } catch (error) {
+        //                 console.error("Error signing in:", error);
+        //                 showMessageBox("Failed to authenticate. Some features might not work.");
+        //             }
+        //         }
+        //     });
+        // }
+
+        // async function loadUserSettingsFromFirestore() {
+        //     const userDocRef = doc(db, "users", userId);
+        //     const userDocSnap = await getDoc(userDocRef);
+
+        //     if (userDocSnap.exists()) {
+        //         userSettings = userDocSnap.data();
+        //         // Convert Firestore timestamps back to Date objects if stored as such
+        //         if (userSettings.trialStartDate && userSettings.trialStartDate.toDate) {
+        //             userSettings.trialStartDate = userSettings.trialStartDate.toDate();
+        //         }
+        //         if (userSettings.lastDailyReset && userSettings.lastDailyReset.toDate) {
+        //             userSettings.lastDailyReset = userSettings.lastDailyReset.toDate();
+        //         }
+        //         console.log("User settings loaded from Firestore:", userSettings);
+        //     } else {
+        //         console.log("No user settings found in Firestore, creating new.");
+        //         // New user, save initial settings
+        //         userSettings.trialStartDate = new Date();
+        //         userSettings.lastDailyReset = new Date();
+        //         await setDoc(userDocRef, userSettings);
+        //     }
+        //     updateUserStatusDisplay();
+        // }
+
+        // async function saveUserSettingsToFirestore() {
+        //     if (!userId) {
+        //         console.warn("User ID not available, cannot save to Firestore.");
+        //         return;
+        //     }
+        //     const userDocRef = doc(db, "users", userId);
+        //     try {
+        //         // Ensure Date objects are converted to Firestore Timestamps if necessary
+        //         const settingsToSave = { ...userSettings };
+        //         if (settingsToSave.trialStartDate instanceof Date) {
+        //             settingsToSave.trialStartDate = settingsToSave.trialStartDate; // Firestore handles Date objects
+        //         }
+        //         if (settingsToSave.lastDailyReset instanceof Date) {
+        //             settingsToSave.lastDailyReset = settingsToSave.lastDailyReset; // Firestore handles Date objects
+        //         }
+        //         await setDoc(userDocRef, settingsToSave, { merge: true });
+        //         console.log("User settings saved to Firestore.");
+        //     } catch (error) {
+        //         console.error("Error saving user settings to Firestore:", error);
+        //         showMessageBox("Failed to save user settings. Please try again.");
+        //     }
+        // }
+
+        // Override saveUserSettings and loadUserSettings to use Firestore when active
+        // saveUserSettings = saveUserSettingsToFirestore;
+        // loadUserSettings = loadUserSettingsFromFirestore;
+        // initializeUser = () => { initFirebase(); }; // Only call Firebase init here
+        */
+
+        window.onload = initializeUpscaler; // Original initialization
+    </script>
+</body>
+</html>
